@@ -23,7 +23,7 @@ ISR(TIM0_COMPA_vect)
     {
         current_digit = (current_digit + 1) & 0x3;
         display_digit(current_digit);
-        ADCSRA |= (1 << ADSC); //Start new ADC conversion while no communication with display is taking place
+        ADCSRA |= BIT(ADSC); //Start new ADC conversion while no communication with display is taking place
         periph_delay = 0;
     }
 }
@@ -46,18 +46,18 @@ int main()
     setup_display();
 
     //Setup ADC on channel 0
-    DIDR0 = (1 << ADC0D); //Disable digital input on ADC0 pin
-    ADMUX = (1 << ADLAR); //Adjust ADC results left (we'll then be using only high word of conversion result)
-    ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADIE); //Enable and start ADC, and enable ADC interrupt
+    DIDR0 = BIT(ADC0D); //Disable digital input on ADC0 pin
+    ADMUX = BIT(ADLAR); //Adjust ADC results left (we'll then be using only high word of conversion result)
+    ADCSRA = BIT(ADEN) | BIT(ADSC) | BIT(ADIE); //Enable and start ADC, and enable ADC interrupt
 
     //Set fan revelation sensor interrupt and enable sleep mode
-    MCUCR = (1 << PUD) | (1 << SE) | (1 << ISC01) | (1 << ISC00); //INT0 on rising edge, also disable pull-ups and enable sleep
+    MCUCR = BIT(PUD) | BIT(SE) | BIT(ISC01) | BIT(ISC00); //INT0 on rising edge, also disable pull-ups and enable sleep
 
     //Init timer for 25 kHz software PWM mode
-    TIMSK0 = 1 << OCIE0A; //Enable interrupt for Compare Match A
+    TIMSK0 = BIT(OCIE0A); //Enable interrupt for Compare Match A
     OCR0A = 95; //Needed to achieve 25 kHz with no prescaler
-    TCCR0A = 1 << WGM01; //CTC mode
-    TCCR0B = 1 << CS00; //Prescaler = 1 (no prescaler)
+    TCCR0A = BIT(WGM01); //CTC mode
+    TCCR0B = BIT(CS00); //Prescaler = 1 (no prescaler)
 
     //All initialization done
     sei();
