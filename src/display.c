@@ -5,11 +5,10 @@
 #include "display.h"
 #include "ports.h"
 
-static uint8_t displayed_characters[SEGMENTS_COUNT];
+static volatile uint8_t displayed_characters[SEGMENTS_COUNT] = {DISP_N, DISP_A, DISP_F, DISP_T};
 
 static const uint8_t display_characters_map[] PROGMEM = {
     DISP_0, DISP_1, DISP_2, DISP_3, DISP_4, DISP_5, DISP_6, DISP_7, DISP_8, DISP_9,
-    DISP_P,
     DISP_9 & DISP_DOT //last character is 9 with dot
 };
 

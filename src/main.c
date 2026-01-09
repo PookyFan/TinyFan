@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include <avr/interrupt.h>
+#include <avr/sleep.h>
 #include <util/delay_basic.h>
 #include "display.h"
 
@@ -22,8 +23,8 @@ ISR(TIM0_COMPA_vect)
     {
         current_digit = (current_digit + 1) & 0x3;
         display_digit(current_digit);
-        periph_delay = 0;
         ADCSRA |= (1 << ADSC); //Start new ADC conversion while no communication with display is taking place
+        periph_delay = 0;
     }
 }
 
@@ -47,10 +48,10 @@ int main()
     //Setup ADC on channel 0
     DIDR0 = (1 << ADC0D); //Disable digital input on ADC0 pin
     ADMUX = (1 << ADLAR); //Adjust ADC results left (we'll then be using only high word of conversion result)
-    ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADIE); //Enable and start ADC; enable ADC interrupt
+    ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADIE); //Enable and start ADC, and enable ADC interrupt
 
-    //Set fan revelation sensor interrupt
-    MCUCR = (1 << PUD) | (1 << ISC01) | (1 << ISC00); //Trigger interrupt on rising edge, also disable pull-ups
+    //Set fan revelation sensor interrupt and enable sleep mode
+    MCUCR = (1 << PUD) | (1 << SE) | (1 << ISC01) | (1 << ISC00); //INT0 on rising edge, also disable pull-ups and enable sleep
 
     //Init timer for 25 kHz software PWM mode
     TIMSK0 = 1 << OCIE0A; //Enable interrupt for Compare Match A
@@ -61,10 +62,14 @@ int main()
     //All initialization done
     sei();
 
+    //Wait for a while to show banner on display before starting normal operation
+    for(uint8_t i = 5; i > 0; --i)
+        _delay_loop_2(60000);
+
     set_displayed_number(curr_adc_value);
     while(1)
     {
-        //todo: check this after waking up from some kind of sleep
+        sleep_cpu();
         cli();
         uint8_t current = curr_adc_value;
         uint8_t previous = prev_adc_value;
