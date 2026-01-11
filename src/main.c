@@ -5,37 +5,58 @@
 #include <avr/sleep.h>
 #include <util/delay_basic.h>
 #include "display.h"
+#include "ports.h"
 
-static volatile uint16_t fan_revelation_pulses;
+#define TIMER_FREQ   50000
+#define AS_NUMBER    0
+#define AS_PERCENT   1
+#define ADC_LOW_VAL  147
+#define ADC_HIGH_VAL 247
+
+static volatile struct {
+    uint16_t display_delay;
+    uint16_t fan_revolution_pulses;
+    uint16_t fan_revolution_count;
+    uint8_t  periph_delay;
+    uint8_t  prev_adc_value;
+    uint8_t  curr_adc_value;
+    uint8_t : 4;
+    uint8_t  update_fan_speed : 1;
+    uint8_t  display_percentage : 1;
+    uint8_t  current_character : 2;
+} global;
 
 ISR(INT0_vect)
 {
-    ++fan_revelation_pulses;
+    ++global.fan_revolution_pulses;
 }
-
-static volatile uint8_t current_digit;
-static volatile uint8_t periph_delay;
-
 
 ISR(TIM0_COMPA_vect)
 {
-    if(++periph_delay == 104) //For 25 kHz main timer we'll get ~240 Hz peripheral timer
+    //todo: toggle PWM pin to achieve 25 kHz PWM signal from 50 kHz timer
+
+    if(++global.display_delay == TIMER_FREQ)
     {
-        current_digit = (current_digit + 1) & 0x3;
-        display_digit(current_digit);
-        ADCSRA |= BIT(ADSC); //Start new ADC conversion while no communication with display is taking place
-        periph_delay = 0;
+        global.display_delay = 0;
+        global.fan_revolution_count = global.fan_revolution_pulses >> 1;
+        global.fan_revolution_pulses = global.fan_revolution_pulses & 1;
+        global.update_fan_speed = 1;
+        global.display_percentage = 0;
+    }
+
+    if(++global.periph_delay == 208) //For 50 kHz main timer we'll get ~240 Hz peripheral timer
+    {
+        display_character(++global.current_character);
+        set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
+        global.periph_delay = 0;
     }
 }
-
-static volatile uint8_t prev_adc_value;
-static volatile uint8_t curr_adc_value;
 
 ISR(ADC_vect)
 {
     uint8_t result = ADCH; //Ignore LSB of the result
-    prev_adc_value = curr_adc_value;
-    curr_adc_value = result;
+    global.prev_adc_value = global.curr_adc_value;
+    global.curr_adc_value = result;
 }
 
 int main()
@@ -50,12 +71,13 @@ int main()
     ADMUX = BIT(ADLAR); //Adjust ADC results left (we'll then be using only high word of conversion result)
     ADCSRA = BIT(ADEN) | BIT(ADSC) | BIT(ADIE); //Enable and start ADC, and enable ADC interrupt
 
-    //Set fan revelation sensor interrupt and enable sleep mode
-    MCUCR = BIT(PUD) | BIT(SE) | BIT(ISC01) | BIT(ISC00); //INT0 on rising edge, also disable pull-ups and enable sleep
+    //Set fan revolution sensor interrupt and enable sleep mode
+    MCUCR = BIT(PUD) | BIT(SE) | BIT(ISC01); //INT0 on falling edge, also disable pull-ups and enable sleep
+    GIMSK = BIT(INT0); //Enable INT0 interrupt
 
-    //Init timer for 25 kHz software PWM mode
+    //Init 50 kHz timer for 25 kHz software PWM mode
     TIMSK0 = BIT(OCIE0A); //Enable interrupt for Compare Match A
-    OCR0A = 95; //Needed to achieve 25 kHz with no prescaler
+    OCR0A = 95; //Needed to achieve 50 kHz with no prescaler at 4.8 MHz
     TCCR0A = BIT(WGM01); //CTC mode
     TCCR0B = BIT(CS00); //Prescaler = 1 (no prescaler)
 
@@ -63,19 +85,36 @@ int main()
     sei();
 
     //Wait for a while to show banner on display before starting normal operation
-    for(uint8_t i = 5; i > 0; --i)
+    for(uint8_t i = 1; i > 0; --i)
         _delay_loop_2(60000);
 
-    set_displayed_number(curr_adc_value);
     while(1)
     {
         sleep_cpu();
         cli();
-        uint8_t current = curr_adc_value;
-        uint8_t previous = prev_adc_value;
+        uint8_t current = global.curr_adc_value;
+        uint8_t previous = global.prev_adc_value;
         sei();
         if(current != previous)
-            set_displayed_number(current);
+        {
+            cli();
+            global.display_delay = 0;
+            global.display_percentage = 1;
+            global.fan_revolution_pulses = 0;
+            sei();
+
+            uint8_t percent = (current > ADC_HIGH_VAL) ? 100 :
+                ((current < ADC_LOW_VAL) ? 0 : current - ADC_LOW_VAL);
+            set_displayed_number(percent, AS_PERCENT);
+        }
+        else if(!global.display_percentage && global.update_fan_speed)
+        {
+            cli();
+            uint16_t revolutions = global.fan_revolution_count;
+            global.update_fan_speed = 0;
+            sei();
+            set_displayed_number(revolutions, AS_NUMBER);
+        }
     }
     return 0;
 }

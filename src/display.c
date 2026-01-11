@@ -40,7 +40,7 @@ void setup_display()
     set_pin_out(DISP_RCLK_PORT);
 }
 
-void set_displayed_number(uint16_t number)
+void set_displayed_number(uint16_t number, uint8_t as_percentage)
 {
     if(number > MAX_VALUE_TO_DISPLAY)
     {
@@ -53,10 +53,18 @@ void set_displayed_number(uint16_t number)
     }
     else
         number = encode_bcd(number);
-    
+
+    uint8_t characters[SEGMENTS_COUNT] = {DISP_0, DISP_NONE, DISP_NONE, DISP_NONE};
+    if(as_percentage != 0)
+    {
+        as_percentage = 1; //For simplicity
+        characters[0] = DISP_P;
+        characters[1] = DISP_0;
+        number = LEFTSHIFT_BY_NIBBLE(number, 1);
+    }
+
     uint8_t first_digit_encoded = 0;
-    uint8_t characters[SEGMENTS_COUNT] = {DISP_NONE, DISP_NONE, DISP_NONE, DISP_NONE};
-    for(uint8_t i = SEGMENTS_COUNT; i > 0; --i)
+    for(uint8_t i = SEGMENTS_COUNT; i > as_percentage; --i)
     {
         uint8_t digit_order = i - 1;
         uint8_t index = RIGHTSHIFT_BY_NIBBLE(number, digit_order) & 0xF;
@@ -69,15 +77,12 @@ void set_displayed_number(uint16_t number)
         }
     }
 
-    if(!first_digit_encoded) //A single 0 is to be shown
-        characters[0] = DISP_0;
-
     for(uint8_t i = 0; i < SEGMENTS_COUNT; ++i)
         displayed_characters[i] = characters[i];
 
 }
 
-void display_digit(uint8_t digit)
+void display_character(uint8_t digit)
 {
     //Shift BCD and segment mask to HC595s
     uint16_t value = (0x8000 >> digit) | displayed_characters[digit];
