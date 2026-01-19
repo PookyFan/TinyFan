@@ -33,13 +33,6 @@ static uint16_t encode_bcd(uint16_t number)
     return (uint16_t)(reg >> BITS_IN(number));
 }
 
-void setup_display()
-{
-    set_pin_out(DISP_DATA_PORT);
-    set_pin_out(DISP_SCLK_PORT);
-    set_pin_out(DISP_RCLK_PORT);
-}
-
 void set_displayed_number(uint16_t number, uint8_t as_percentage)
 {
     if(number > MAX_VALUE_TO_DISPLAY)
@@ -57,7 +50,6 @@ void set_displayed_number(uint16_t number, uint8_t as_percentage)
     uint8_t characters[SEGMENTS_COUNT] = {DISP_0, DISP_NONE, DISP_NONE, DISP_NONE};
     if(as_percentage != 0)
     {
-        as_percentage = 1; //For simplicity
         characters[0] = DISP_P;
         characters[1] = DISP_0;
         number = LEFTSHIFT_BY_NIBBLE(number, 1);
@@ -79,7 +71,6 @@ void set_displayed_number(uint16_t number, uint8_t as_percentage)
 
     for(uint8_t i = 0; i < SEGMENTS_COUNT; ++i)
         displayed_characters[i] = characters[i];
-
 }
 
 void display_character(uint8_t digit)

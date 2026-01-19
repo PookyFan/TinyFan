@@ -58,7 +58,6 @@
 #define NIBBLE_OF(v, n) ((v) & NIBBLE_MASK(n))
 #define BITS_IN(n) (8 * sizeof(n))
 
-void setup_display();
 void set_displayed_number(uint16_t number, uint8_t as_percentage);
 void display_character(uint8_t digit);
 
