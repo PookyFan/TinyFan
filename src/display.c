@@ -4,6 +4,7 @@
 #include <avr/pgmspace.h>
 #include "display.h"
 #include "ports.h"
+#include "register_structs.h"
 
 static volatile uint8_t displayed_characters[SEGMENTS_COUNT] = {DISP_N, DISP_A, DISP_F, DISP_T};
 
