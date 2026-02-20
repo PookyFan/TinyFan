@@ -135,7 +135,6 @@ int main()
     {
         sleep_cpu();
     } while(!global_reg.update_fan_speed);
-        
 
     //Enforce speed percentage event change at the start
     cli();
@@ -149,6 +148,8 @@ int main()
         if(current != previous)
         {
             cli();
+            readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+
             int16_t percent = ((int16_t)current) - ADC_LOW_VAL;
             uint8_t timer_b_val = ((uint8_t)percent) << 1;
             if(percent <= 0)
@@ -156,7 +157,7 @@ int main()
                 percent = 0;
                 disable_pwm_and_set_pin(LOW);
             }
-            else if(timer_b_val > OCR0A)
+            else if(timer_b_val >= OCR0A)
             {
                 percent = 100;
                 disable_pwm_and_set_pin(HIGH);
