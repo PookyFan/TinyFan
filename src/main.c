@@ -1,8 +1,7 @@
-
-#include <stdint.h>
-
 #include <avr/interrupt.h>
+#include <avr/pgmspace.h>
 #include <avr/sleep.h>
+#include <stdint.h>
 #include <util/delay_basic.h>
 #include "display.h"
 #include "ports.h"
@@ -20,6 +19,19 @@ static volatile struct {
     uint16_t fan_revolution_count;
     uint8_t  current_character;
 } global_ram;
+
+static const uint8_t precalculated_timer_b_values[] PROGMEM = {
+    /*0-4% not handled*/ 9, 11, 13, 15, 17, 19, 21, 22, 24, 26, 28, 30, 32, 34, 36, 38,
+    40, 42, 43, 45, 47, 49, 51, 53, 55, 57, 59, 61, 63, 64, 66, 68, 70, 72, 74, 76,
+    78, 80, 82, 84, 85, 87, 89, 91, 93, 95, 97, 99, 101, 103, 105, 106, 108, 110, 112, 114,
+    116, 118, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 139, 141, 143, 145, 147, 148, 150, 152,
+    154, 156, 158, 160, 162, 164, 166, 168, 169, 171, 173, 175, 177, 179, 181, /*96-100% not handled*/
+};
+
+uint8_t get_precalculated_timer_b(unsigned int index)
+{
+    return pgm_read_byte(&precalculated_timer_b_values[index - 5]);
+}
 
 static void disable_pwm_and_set_pin(uint8_t value)
 {
@@ -150,14 +162,15 @@ int main()
             cli();
             readings_reg.prev_adc_value = readings_reg.curr_adc_value;
 
+            //PWM is somehow precise, although not so much close to edge values,
+            //probably due to ISRs delays taking considerable time of level change
             int16_t percent = ((int16_t)current) - ADC_LOW_VAL;
-            uint8_t timer_b_val = ((uint8_t)percent) << 1;
-            if(percent <= 0)
+            if(percent < 5)
             {
                 percent = 0;
                 disable_pwm_and_set_pin(LOW);
             }
-            else if(timer_b_val >= OCR0A)
+            else if(percent > 95)
             {
                 percent = 100;
                 disable_pwm_and_set_pin(HIGH);
@@ -172,7 +185,7 @@ int main()
                     readings_reg.fan_revolution_pulses = 0;
                     global_ram.fan_revolution_count = 0;
                 }
-                OCR0B = timer_b_val;
+                OCR0B = get_precalculated_timer_b(percent);
             }
 
             global_reg.display_delay = 0;
@@ -190,8 +203,6 @@ int main()
             sei();
             set_displayed_number(revolutions, AS_NUMBER);
         }
-
-        sleep_cpu();
     }
     return 0;
 }
