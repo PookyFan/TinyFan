@@ -37,7 +37,7 @@ static void disable_pwm_and_set_pin(uint8_t value)
 {
     OCR0B = 0xFF; //Do not allow further compare match B events
     set_pin(FAN_PWM_PORT, value);
-    global_reg.pwm_enabled = 0;
+    global_reg.flags.pwm_enabled = 0;
 }
 
 ISR(INT0_vect, ISR_NAKED)
@@ -63,7 +63,7 @@ void __vector_timer_cmp_match_A_handler() __attribute__((__used__, __interrupt__
 
 ISR(TIM0_COMPA_vect, ISR_NAKED)
 {
-    if(global_reg.pwm_enabled)
+    if(global_reg.flags.pwm_enabled)
         set_pin_high(FAN_PWM_PORT);
 
     //No call to __vector_timer_cmp_match_A_handler() here - we will fall to it due to no reti instruction!
@@ -77,23 +77,21 @@ void __vector_timer_cmp_match_A_handler()
         cli();
         global_ram.fan_revolution_count = readings_reg.fan_revolution_pulses >> 1;
         readings_reg.fan_revolution_pulses = readings_reg.fan_revolution_pulses & 1;
-        global_reg.update_fan_speed = 1;
-        global_reg.display_percentage = 0;
+        global_reg.flags.update_fan_speed = 1;
+        global_reg.flags.display_percentage = 0;
         sei();
     }
 
     if(++global_reg.periph_delay == 104) //For 25 kHz main timer we'll get ~240 Hz peripheral timer
     {
-        global_ram.current_character = (global_ram.current_character + 1) & 3;
-        display_character(global_ram.current_character);
         global_reg.periph_delay = 0;
-        set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
+        global_reg.flags.display_character = 1;
     }
 }
 
 ISR(TIM0_COMPB_vect)
 {
-    if(global_reg.pwm_enabled)
+    if(global_reg.flags.pwm_enabled)
         set_pin_low(FAN_PWM_PORT);
 }
 
@@ -101,6 +99,12 @@ ISR(ADC_vect)
 {
     readings_reg.prev_adc_value = readings_reg.curr_adc_value;
     readings_reg.curr_adc_value = ADCH; //Ignore LSB of the result
+}
+
+inline static void display_next_character()
+{
+    global_ram.current_character = (global_ram.current_character + 1) & 3;
+    display_character(global_ram.current_character);
 }
 
 int main()
@@ -114,9 +118,7 @@ int main()
 
     global_reg.display_delay = 0;
     global_reg.periph_delay = 0;
-    global_reg.pwm_enabled = 0;
-    global_reg.update_fan_speed = 0;
-    global_reg.display_percentage = 0;
+    global_reg.flags_reg = 0;
 
     //Init display
     set_pin_out(DISP_DATA_PORT);
@@ -145,8 +147,9 @@ int main()
     //Wait for a while to show banner on display before starting normal operation
     do
     {
+        display_next_character();
         sleep_cpu();
-    } while(!global_reg.update_fan_speed);
+    } while(!global_reg.flags.update_fan_speed);
 
     //Enforce speed percentage event change at the start
     cli();
@@ -177,9 +180,9 @@ int main()
             }
             else
             {
-                if(!global_reg.pwm_enabled)
+                if(!global_reg.flags.pwm_enabled)
                 {
-                    global_reg.pwm_enabled = 1;
+                    global_reg.flags.pwm_enabled = 1;
 
                     //Clear fan counters and timer counter to properly align toggling PWM pin
                     readings_reg.fan_revolution_pulses = 0;
@@ -189,19 +192,26 @@ int main()
             }
 
             global_reg.display_delay = 0;
-            global_reg.display_percentage = 1;
+            global_reg.flags.display_percentage = 1;
             readings_reg.fan_revolution_pulses = 0;
             sei();
 
             set_displayed_number(percent, AS_PERCENT);
         }
-        else if(!global_reg.display_percentage && global_reg.update_fan_speed)
+        else if(!global_reg.flags.display_percentage && global_reg.flags.update_fan_speed)
         {
             cli();
             uint16_t revolutions = global_ram.fan_revolution_count;
-            global_reg.update_fan_speed = 0;
+            global_reg.flags.update_fan_speed = 0;
             sei();
             set_displayed_number(revolutions, AS_NUMBER);
+        }
+
+        if(global_reg.flags.display_character)
+        {
+            global_reg.flags.display_character = 0;
+            display_next_character();
+            set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
         }
     }
     return 0;
