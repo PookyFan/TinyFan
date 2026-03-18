@@ -111,7 +111,7 @@ inline static void display_next_character()
     display_character(global_ram.current_character);
 }
 
-int main()
+inline static void initialize()
 {
     cli();
 
@@ -160,6 +160,70 @@ int main()
 
     //All initialization done
     sei();
+}
+
+inline static void main_loop()
+{
+    uint8_t current = readings_reg.curr_adc_value;
+    uint8_t previous = readings_reg.prev_adc_value;
+    if(current != previous)
+    {
+        cli();
+        readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+
+        //PWM is somehow precise, although not so much close to edge values,
+        //probably due to ISRs delays taking considerable time of level change
+        int16_t percent = ((int16_t)current) - ADC_LOW_VAL;
+        if(percent < 5)
+        {
+            percent = 0;
+            disable_pwm_and_set_pin(LOW);
+        }
+        else if(percent > 95)
+        {
+            percent = 100;
+            disable_pwm_and_set_pin(HIGH);
+        }
+        else
+        {
+            if(!global_reg.flags.pwm_enabled)
+            {
+                global_reg.flags.pwm_enabled = 1;
+
+                //Clear fan counters and timer counter to properly align toggling PWM pin
+                readings_reg.fan_revolution_pulses = 0;
+                global_ram.fan_revolution_count = 0;
+            }
+            OCR0B = get_precalculated_timer_b(percent);
+        }
+
+        global_reg.display_delay = 0;
+        global_reg.flags.display_percentage = 1;
+        readings_reg.fan_revolution_pulses = 0;
+        sei();
+
+        set_displayed_number(percent, AS_PERCENT);
+    }
+    else if(!global_reg.flags.display_percentage && global_reg.flags.update_fan_speed)
+    {
+        cli();
+        uint16_t revolutions = global_ram.fan_revolution_count;
+        global_reg.flags.update_fan_speed = 0;
+        sei();
+        set_displayed_number(revolutions, AS_NUMBER);
+    }
+
+    if(global_reg.flags.display_character)
+    {
+        global_reg.flags.display_character = 0;
+        display_next_character();
+        set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
+    }
+}
+
+int main()
+{
+    initialize();
 
     //Wait for a while to show banner on display before starting normal operation
     do
@@ -172,64 +236,8 @@ int main()
     cli();
     readings_reg.prev_adc_value = 0;
 
-    //Enter program loop
     while(1)
-    {
-        uint8_t current = readings_reg.curr_adc_value;
-        uint8_t previous = readings_reg.prev_adc_value;
-        if(current != previous)
-        {
-            cli();
-            readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+        main_loop();
 
-            //PWM is somehow precise, although not so much close to edge values,
-            //probably due to ISRs delays taking considerable time of level change
-            int16_t percent = ((int16_t)current) - ADC_LOW_VAL;
-            if(percent < 5)
-            {
-                percent = 0;
-                disable_pwm_and_set_pin(LOW);
-            }
-            else if(percent > 95)
-            {
-                percent = 100;
-                disable_pwm_and_set_pin(HIGH);
-            }
-            else
-            {
-                if(!global_reg.flags.pwm_enabled)
-                {
-                    global_reg.flags.pwm_enabled = 1;
-
-                    //Clear fan counters and timer counter to properly align toggling PWM pin
-                    readings_reg.fan_revolution_pulses = 0;
-                    global_ram.fan_revolution_count = 0;
-                }
-                OCR0B = get_precalculated_timer_b(percent);
-            }
-
-            global_reg.display_delay = 0;
-            global_reg.flags.display_percentage = 1;
-            readings_reg.fan_revolution_pulses = 0;
-            sei();
-
-            set_displayed_number(percent, AS_PERCENT);
-        }
-        else if(!global_reg.flags.display_percentage && global_reg.flags.update_fan_speed)
-        {
-            cli();
-            uint16_t revolutions = global_ram.fan_revolution_count;
-            global_reg.flags.update_fan_speed = 0;
-            sei();
-            set_displayed_number(revolutions, AS_NUMBER);
-        }
-
-        if(global_reg.flags.display_character)
-        {
-            global_reg.flags.display_character = 0;
-            display_next_character();
-            set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
-        }
-    }
     return 0;
 }
