@@ -1,3 +1,5 @@
+#include <avr/cpufunc.h>
+#include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <avr/sleep.h>
@@ -27,6 +29,8 @@ static const uint8_t precalculated_timer_b_values[] PROGMEM = {
     116, 118, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 139, 141, 143, 145, 147, 148, 150, 152,
     154, 156, 158, 160, 162, 164, 166, 168, 169, 171, 173, 175, 177, 179, 181, /*96-100% not handled*/
 };
+
+static const uint8_t EEMEM calibration_value_ee = CALIBRATION_VALUE;
 
 uint8_t get_precalculated_timer_b(unsigned int index)
 {
@@ -110,6 +114,19 @@ inline static void display_next_character()
 int main()
 {
     cli();
+
+    //Read calibration value from EEPROM
+    EEARL = &calibration_value_ee;          //Load address in EEPROM to read from
+    EECR = BIT(EERE);                      //Read from EEPROM
+    const uint8_t calibration_val = EEDR; //Get read value from EEPROM
+
+    //Calibrate internal oscilator
+    while(OSCCAL != calibration_val)
+    {
+        int8_t diff = (OSCCAL < calibration_val) ? 1 : -1;
+        OSCCAL += diff;
+        _NOP();
+    }
 
     //Init data kept in registers
     readings_reg.fan_revolution_pulses = 0;
