@@ -5,9 +5,9 @@
 
 #define FAN_PWM_PORT   0
 #define FAN_SENSOR_PIN 1
-#define DISP_DATA_PORT 2
+#define DISP_DATA_PORT 4
 #define DISP_RCLK_PORT 3
-#define DISP_SCLK_PORT 4
+#define DISP_SCLK_PORT 2
 #define KNOB_ADC_PIN   5
 
 #define BIT(n) (1 << (n))
