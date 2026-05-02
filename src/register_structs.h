@@ -19,7 +19,9 @@ register volatile struct {
             uint8_t  pwm_enabled        : 1; //r15.0
             uint8_t  update_fan_speed   : 1; //r15.1
             uint8_t  display_percentage : 1; //r15.2
-            uint8_t  display_character  : 1; //r15.3
+            uint8_t  handle_peripherals : 1; //r15.3
+            uint8_t  adc_changed        : 1; //r15.4
+            uint8_t  adc_is_stable      : 1; //r15.5
         } flags;
         uint8_t flags_reg; //r15
     };

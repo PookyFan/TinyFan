@@ -14,8 +14,8 @@
 #define TIMER_FREQ   25000
 #define AS_NUMBER    0
 #define AS_PERCENT   1
-#define ADC_LOW_VAL  147L
-#define ADC_HIGH_VAL 247L
+#define ADC_LOW_VAL  147U
+#define ADC_HIGH_VAL 247U
 
 static volatile struct {
     uint16_t fan_revolution_count;
@@ -39,7 +39,6 @@ uint8_t get_precalculated_timer_b(unsigned int index)
 
 static void disable_pwm_and_set_pin(uint8_t value)
 {
-    OCR0B = 0xFF; //Do not allow further compare match B events
     set_pin(FAN_PWM_PORT, value);
     global_reg.flags.pwm_enabled = 0;
 }
@@ -89,7 +88,7 @@ void __vector_timer_cmp_match_A_handler()
     if(++global_reg.periph_delay == 104) //For 25 kHz main timer we'll get ~240 Hz peripheral timer
     {
         global_reg.periph_delay = 0;
-        global_reg.flags.display_character = 1;
+        global_reg.flags.handle_peripherals = 1;
     }
 }
 
@@ -130,9 +129,6 @@ inline static void initialize()
 
     //Init data kept in registers
     readings_reg.fan_revolution_pulses = 0;
-    readings_reg.prev_adc_value = 0;
-    readings_reg.curr_adc_value = 0;
-
     global_reg.display_delay = 0;
     global_reg.periph_delay = 0;
     global_reg.flags_reg = 0;
@@ -168,12 +164,19 @@ inline static void main_loop()
     uint8_t previous = readings_reg.prev_adc_value;
     if(current != previous)
     {
-        cli();
-        readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+        global_reg.flags.adc_changed = 1;
+        global_reg.flags.adc_is_stable = 0;
+    }
+    else if(global_reg.flags.adc_changed && !global_reg.flags.adc_is_stable)
+    {
+        global_reg.flags.adc_changed = 0;
+        global_reg.flags.adc_is_stable = 1;
 
         //PWM is somehow precise, although not so much close to edge values,
         //probably due to ISRs delays taking considerable time of level change
-        int16_t percent = ((int16_t)current) - ADC_LOW_VAL;
+        uint8_t percent = current - ADC_LOW_VAL;
+        uint8_t timer_val = 0xFF; //For 0 and 100 percent cases
+        cli();
         if(percent < 5)
         {
             percent = 0;
@@ -186,17 +189,18 @@ inline static void main_loop()
         }
         else
         {
-            if(!global_reg.flags.pwm_enabled)
-            {
-                global_reg.flags.pwm_enabled = 1;
-
-                //Clear fan counters and timer counter to properly align toggling PWM pin
-                readings_reg.fan_revolution_pulses = 0;
-                global_ram.fan_revolution_count = 0;
-            }
-            OCR0B = get_precalculated_timer_b(percent);
+            timer_val = get_precalculated_timer_b(percent);
+            global_reg.flags.pwm_enabled = 1;
         }
 
+        if(timer_val == OCR0B)
+        {
+            //Timer value is the same, so no real change in fan speed occurs - skip the update
+            sei();
+            goto disp_char;
+        }
+
+        OCR0B = timer_val;
         global_reg.display_delay = 0;
         global_reg.flags.display_percentage = 1;
         readings_reg.fan_revolution_pulses = 0;
@@ -213,9 +217,10 @@ inline static void main_loop()
         set_displayed_number(revolutions, AS_NUMBER);
     }
 
-    if(global_reg.flags.display_character)
+disp_char:
+    if(global_reg.flags.handle_peripherals)
     {
-        global_reg.flags.display_character = 0;
+        global_reg.flags.handle_peripherals = 0;
         display_next_character();
         set_bit(ADCSRA, ADSC); //Start new ADC conversion while no communication with display is taking place
     }
@@ -234,7 +239,8 @@ int main()
 
     //Enforce speed percentage event change at the start
     cli();
-    readings_reg.prev_adc_value = 0;
+    readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+    global_reg.flags.adc_changed = 1;
 
     while(1)
         main_loop();
