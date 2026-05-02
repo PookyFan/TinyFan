@@ -48,7 +48,8 @@ void set_displayed_number(uint16_t number, uint8_t as_percentage)
     else
         number = encode_bcd(number);
 
-    uint8_t characters[SEGMENTS_COUNT] = {DISP_0, DISP_NONE, DISP_NONE, DISP_NONE};
+    //Apparently, allocating one excessive byte triggers better code optimization!
+    uint8_t characters[SEGMENTS_COUNT + 1] = {DISP_0, DISP_NONE, DISP_NONE, DISP_NONE};
     if(as_percentage != 0)
     {
         characters[0] = DISP_P;
