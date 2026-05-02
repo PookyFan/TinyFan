@@ -214,7 +214,14 @@ inline static void main_loop()
         uint16_t revolutions = global_ram.fan_revolution_count;
         global_reg.flags.update_fan_speed = 0;
         sei();
-        set_displayed_number(revolutions, AS_NUMBER);
+
+        //To get revolutions per minute instead of per second,
+        //multiply by 64 then subtract original value times four,
+        //as simply multiplying by 60 is a no-go on AVR
+        uint16_t rpm = revolutions << 6;
+        revolutions <<= 2;
+        rpm -= revolutions;
+        set_displayed_number(rpm, AS_NUMBER);
     }
 
 disp_char:
