@@ -28,4 +28,9 @@ register volatile struct {
     };
 } global_reg asm("r12");
 
+register volatile struct {
+    uint8_t  filter_val; //r16
+    uint8_t filter_sum;  //r17
+} lpf_reg asm("r16");
+
 #endif

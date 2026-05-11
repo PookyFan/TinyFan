@@ -14,8 +14,9 @@
 #define TIMER_FREQ   25000
 #define AS_NUMBER    0
 #define AS_PERCENT   1
-#define ADC_LOW_VAL  147U
-#define ADC_HIGH_VAL 247U
+#define FILTER_POWER 1
+#define ADC_LOW_VAL  145U
+#define ADC_HIGH_VAL 245U
 
 static volatile struct {
     uint8_t fan_rev_pulses_frozen;
@@ -99,6 +100,13 @@ ISR(ADC_vect)
     readings_reg.curr_adc_value = ADCH; //Ignore LSB of the result
 }
 
+inline static uint8_t lpf(uint8_t val)
+{
+    lpf_reg.filter_sum = lpf_reg.filter_sum - lpf_reg.filter_val + val;
+    lpf_reg.filter_val = (lpf_reg.filter_sum >> FILTER_POWER);
+    return lpf_reg.filter_val;
+}
+
 inline static void display_next_character()
 {
     global_ram.current_character = (global_ram.current_character + 1) & 3;
@@ -169,7 +177,7 @@ inline static void main_loop()
 
         //PWM is somehow precise, although not so much close to edge values,
         //probably due to ISRs delays taking considerable time of level change
-        uint8_t percent = current - ADC_LOW_VAL;
+        uint8_t percent = lpf(current - ADC_LOW_VAL); //Low-pass filter it for better stability
         uint8_t timer_val = 0xFF; //For 0 and 100 percent cases
         cli();
         if(percent < 5)
@@ -242,6 +250,8 @@ int main()
     //Enforce speed percentage event change at the start
     cli();
     readings_reg.prev_adc_value = readings_reg.curr_adc_value;
+    lpf_reg.filter_val = readings_reg.curr_adc_value - ADC_LOW_VAL;
+    lpf_reg.filter_sum = lpf_reg.filter_val << FILTER_POWER;
     global_reg.flags.adc_changed = 1;
 
     while(1)
