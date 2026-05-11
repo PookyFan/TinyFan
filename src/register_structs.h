@@ -4,9 +4,10 @@
 #include <stdint.h>
 
 register volatile struct {
-    uint16_t fan_revolution_pulses; //r8-r9
-    uint8_t  prev_adc_value;        //r10
-    uint8_t  curr_adc_value;        //r11
+    uint8_t fan_rev_pulses_current; //r8
+    uint8_t  prev_adc_value;        //r9
+    uint8_t  curr_adc_value;        //r10
+    uint8_t  tmp;                   //r11
 } readings_reg asm("r8");
 
 register volatile struct {

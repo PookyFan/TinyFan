@@ -18,7 +18,7 @@
 #define ADC_HIGH_VAL 247U
 
 static volatile struct {
-    uint16_t fan_revolution_count;
+    uint8_t fan_rev_pulses_frozen;
     uint8_t  current_character;
 } global_ram;
 
@@ -45,16 +45,11 @@ static void disable_pwm_and_set_pin(uint8_t value)
 
 ISR(INT0_vect, ISR_NAKED)
 {
-    //readings_reg.fan_revolution_pulses += 1;
+    //readings_reg.fan_rev_pulses_current += 1;
     asm volatile(
-        "push r0" "\n\t"           //save temp register
-        "in r0, 0x3f" "\n\t"      //save flags register
+        "in r11, 0x3f" "\n\t"     //save flags register
         "inc r8" "\n\t"          //add 1 to LSB
-        "brne after_inc" "\n\t" //if no overflow in LSB, skip incrementing MSB
-        "inc r9" "\n"          //add 1 to MSB
-        "after_inc:" "\n\t"   //
-        "out 0x3f, r0" "\n\t"//restore flags register
-        "pop r0" "\n\t"     //restore temp register
+        "out 0x3f, r11" "\n\t"  //restore flags register
         "reti"
     );
 }
@@ -78,8 +73,8 @@ void __vector_timer_cmp_match_A_handler()
     {
         global_reg.display_delay = 0;
         cli();
-        global_ram.fan_revolution_count = readings_reg.fan_revolution_pulses >> 1;
-        readings_reg.fan_revolution_pulses = readings_reg.fan_revolution_pulses & 1;
+        global_ram.fan_rev_pulses_frozen = readings_reg.fan_rev_pulses_current;
+        readings_reg.fan_rev_pulses_current = 0;
         global_reg.flags.update_fan_speed = 1;
         global_reg.flags.display_percentage = 0;
         sei();
@@ -128,7 +123,7 @@ inline static void initialize()
     }
 
     //Init data kept in registers
-    readings_reg.fan_revolution_pulses = 0;
+    readings_reg.fan_rev_pulses_current = 0;
     global_reg.display_delay = 0;
     global_reg.periph_delay = 0;
     global_reg.flags_reg = 0;
@@ -203,7 +198,7 @@ inline static void main_loop()
         OCR0B = timer_val;
         global_reg.display_delay = 0;
         global_reg.flags.display_percentage = 1;
-        readings_reg.fan_revolution_pulses = 0;
+        readings_reg.fan_rev_pulses_current = 0;
         sei();
 
         set_displayed_number(percent, AS_PERCENT);
@@ -211,16 +206,16 @@ inline static void main_loop()
     else if(!global_reg.flags.display_percentage && global_reg.flags.update_fan_speed)
     {
         cli();
-        uint16_t revolutions = global_ram.fan_revolution_count;
+        register uint16_t pulses = global_ram.fan_rev_pulses_frozen;
         global_reg.flags.update_fan_speed = 0;
         sei();
 
         //To get revolutions per minute instead of per second,
-        //multiply by 64 then subtract original value times four,
+        //multiply revolutions by 64 then subtract revolutions times four,
         //as simply multiplying by 60 is a no-go on AVR
-        uint16_t rpm = revolutions << 6;
-        revolutions <<= 2;
-        rpm -= revolutions;
+        uint16_t rpm = ((uint16_t)pulses << 5); //Actually multiply by 32, since fan pulses are double its revolutions
+        pulses <<= 1;  //For the same reason (as fan pulses are double its revolutions), multiply by 2 not 4
+        rpm -= pulses;
         set_displayed_number(rpm, AS_NUMBER);
     }
 
